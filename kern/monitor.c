@@ -24,6 +24,8 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	// spustenie funkcie mon_backtrace
+	{ "backtrace", "Display a backtrace", mon_backtrace },
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -58,6 +60,45 @@ int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
 	// Your code here.
+	
+	// pomocne premenne
+	// uint32_t - unsigned int, 32-bitovy
+	uint32_t ebp, eip, arguments[5];
+
+	// pomocna struktura
+	struct Eipdebuginfo eip_dbinfo;
+	
+	// funkcia na zistenie ebp, nevracia pointer
+	ebp = read_ebp();
+
+	cprintf("Stack backtrace:\n");
+
+	do {
+		// prva hodnota po ebp je adresa na vratenie sa z funkcie; treba ju pretypovat na pointer
+		eip = ((uint32_t *) ebp)[1];
+		
+		// dalsie hodnoty su argumenty a lokalne premenne funkcie; nevieme kolko argumentov moze funkcia mat, precitame len pat dalsich hodnot
+		arguments[0] = ((uint32_t *) ebp)[2];
+		arguments[1] = ((uint32_t *) ebp)[3];
+		arguments[2] = ((uint32_t *) ebp)[4];
+		arguments[3] = ((uint32_t *) ebp)[5];
+		arguments[4] = ((uint32_t *) ebp)[6];
+
+		// vypis pomocnych premennych
+		// %08x vypise hexadecimalne cislo s osmimi cislicami (doplni aj nuly)
+ 		cprintf("  ebp %08x  eip %08x  args %08x %08x %08x %08x %08x\n", ebp, eip, arguments[0], arguments[1], arguments[2], arguments[3], arguments[4]);
+
+		// debuginfo_eip() vrati 0, ak je adresa v eip spravna, inak vrati -1; zisti informacie o funkcii, na ktoru ukazuje adresa v eip, ktore zapise do pomocnej struktury
+		if(!debuginfo_eip(eip, &eip_dbinfo))
+ 		{
+ 			cprintf("	%s:%d: %.*s+%d\n", eip_dbinfo.eip_file, eip_dbinfo.eip_line, eip_dbinfo.eip_fn_namelen, eip_dbinfo.eip_fn_name, eip - eip_dbinfo.eip_fn_addr);
+ 		}
+
+		// adresa na predosle ebp je ulozena v epb
+		ebp = *((uint32_t *) ebp);
+		// ak nastane ebp == NULL, vdaka do/while prebehne cyklus este raz/posledny krat, cim sa vypise posledna funkcia
+	} while(ebp);
+
 	return 0;
 }
 
