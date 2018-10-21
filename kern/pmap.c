@@ -102,12 +102,25 @@ boot_alloc(uint32_t n)
 	// to a multiple of PGSIZE.
 	//
 	// LAB 2: Your code here.
-	
-	if (PADDR(ROUNDUP(nextfree + n, PGSIZE)) > npages << PGSHIFT)
+
+	/* Riešime tri veci:
+ 	 * 	1. Je dostatok pamäte? Ak nie treba panikáriť.
+ 	 * 	2. Je n == 0, čiže chceme len vrátiť adresu ďalšej voľnej stránky bez alokovania.
+ 	 * 	3. Je n > 0, čiže chceme alokovať n bajtov a vrátiť adresu na začiatok alokovanej pamäte.
+ 	 * 
+ 	 * Ako zistiť či máme dostatok pamäte?
+ 	 * 	Máme k dispozícii premennú "npages", ktorá obsahuje množstvo fyzickej pamäte, ale v stránkach a nie bajtoch. Preto to buď musíme vynásobiť veľkosťou stránky (PGSIZE) alebo shiftnúť do ľava o PGSHIFT, ako som to spravil ja (malo by to byť to isté, len shiftovanie je možno rýchlejšie).
+ 	 * 	Tak dostaneme počet dostupnej fyzickej pamäte. My sme ale dostali v argumente len počet bajtov, ktoré chcú alokovať, tak musíme zistiť či by sme to nepresiahli. "nextfree" je pointer (virtuálna adresa) na miesto, kde sa nachádza ďalšia voľná pamäť.
+ 	 * 	Keď ku nemu pričítame "n" a zaokrúhlime ho dohora, na číslo deliteľné PGSIZE (lebo alokujeme po stránkach 4KB a nie bajtoch) dostaneme teoretickú virtuálnu adresu, kde by končila alokovaná stránka. Ale samozrejme musíme pracovať buď s virtuálnymi alebo fyzickými adresami, ak ich chceme porovnávať a preto som použil makro PADDR, ktoré premení virtuálnu adresu na fyzickú. Viac info o PADDR v "kern/pmap.h".
+ 	 */
+
+	if (PADDR(ROUNDUP(nextfree + n, PGSIZE)) > (4 * 1024 * 1024))
 		panic("boot_alloc: Out of memory\n");
 
+	// Do resultu dáme nextfree, lebo v oboch zvyšných pripadoch ho určite budeme vracať.
 	result = nextfree;
 
+	// Ak ideme alokovať (teda n > 0), tak PO ULOŽENÍ! do resultu navýšime nextfree o zaokrúhlený počet bajtov na veľkosť stránky 4KB.
 	if (n > 0)
 		nextfree += ROUNDUP(n, PGSIZE);
 
@@ -159,6 +172,10 @@ mem_init(void)
 	// to initialize all fields of each struct PageInfo to 0.
 	// Your code goes here:
 
+	/* Ulohou je alokovať pole štruktúr PageInfo a uložiť ho do pages.
+ 	 * Je to to isté ako malloc v C jayzku.
+ 	 * Po tom ako ho alokujeme, tak vynulujeme jeho obsah pomocou memsetu ("lib/string.c").
+ 	 */
 	pages = (struct PageInfo *) boot_alloc(sizeof(struct PageInfo) * npages);
  	memset(pages, 0, sizeof(struct PageInfo) * npages);
 
@@ -185,6 +202,8 @@ mem_init(void)
 	//    - pages itself -- kernel RW, user NONE
 	// Your code goes here:
 
+	boot_map_region(kern_pgdir, UPAGES, npages * sizeof(struct PageInfo), PADDR(pages), (PTE_U | PTE_P));
+
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
 	// stack.  The kernel stack grows down from virtual address KSTACKTOP.
@@ -196,6 +215,8 @@ mem_init(void)
 	//       overwrite memory.  Known as a "guard page".
 	//     Permissions: kernel RW, user NONE
 	// Your code goes here:
+	
+	boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, ROUNDUP(KSTKSIZE, PGSIZE), PADDR(bootstack), (PTE_W | PTE_P));
 
 	//////////////////////////////////////////////////////////////////////
 	// Map all of physical memory at KERNBASE.
@@ -205,6 +226,8 @@ mem_init(void)
 	// we just set up the mapping anyway.
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
+
+	boot_map_region(kern_pgdir, KERNBASE, ROUNDUP(-KERNBASE - 1, PGSIZE), 0, (PTE_W | PTE_P));
 
 	// Check that the initial page directory has been set up correctly.
 	check_kern_pgdir();
@@ -273,18 +296,9 @@ page_init(void)
  			pages[i].pp_ref = 1;
  			pages[i].pp_link = NULL;
  		}
-		else if ((page2pa(&pages[i]) + PGSIZE >= IOPHYSMEM) && (page2pa(&pages[i]) < EXTPHYSMEM)) {
+		else if ((page2pa(&pages[i]) + PGSIZE >= IOPHYSMEM) && (page2kva(&pages[i]) < boot_alloc(0))) {
  			pages[i].pp_ref = 1;
  			pages[i].pp_link = NULL;
- 		}
-		else if ((page2pa(&pages[i]) + PGSIZE >= EXTPHYSMEM) && (page2kva(&pages[i]) < boot_alloc(0))) {
- 			pages[i].pp_ref = 1;
- 			pages[i].pp_link = NULL;
- 		}
-		else if (i < npages_basemem) {
- 			pages[i].pp_ref = 0;
- 			pages[i].pp_link = page_free_list;
- 			page_free_list = &pages[i];
  		}
 		else {
 			pages[i].pp_ref = 0;
@@ -401,8 +415,7 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
  		new_page_entry->pp_ref++;
  		pg_table = (pte_t *) KADDR(page2pa((struct PageInfo *) new_page_entry));
  	}
- 	else
- 	{
+ 	else {
  		pg_table = KADDR(PTE_ADDR(*pg_dir_entry));
  	}
 
@@ -426,6 +439,16 @@ static void
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
 {
 	// Fill this function in
+	pte_t *page_table_entry;
+
+ 	for (size_t i = 0; i < size; i+= PGSIZE) {
+ 		page_table_entry = pgdir_walk(pgdir, (void *) (va + i), 1);
+ 		
+		if(!page_table_entry)
+			return;
+ 		
+		*page_table_entry = (pa + i) | perm | PTE_P;
+ 	}
 }
 
 //
@@ -457,6 +480,25 @@ int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
 	// Fill this function in
+	pte_t *page_table_entry = pgdir_walk(pgdir, va, 1);
+ 	physaddr_t page_physical_address = page2pa(pp);
+
+ 	if(!page_table_entry)
+		return -E_NO_MEM;
+
+ 	if(*page_table_entry & PTE_P) {
+ 		if(page_physical_address == PTE_ADDR(*page_table_entry)) {
+ 			*page_table_entry = page_physical_address | perm | PTE_P;
+ 			return 0;
+ 		}
+
+ 		tlb_invalidate(pgdir, va);
+ 		page_remove(pgdir, va);
+ 	}
+
+ 	pp->pp_ref++;
+ 	*page_table_entry = page_physical_address | perm | PTE_P;
+	
 	return 0;
 }
 
@@ -475,7 +517,17 @@ struct PageInfo *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	// Fill this function in
-	return NULL;
+	pte_t *page_table_entry = pgdir_walk(pgdir, va, 0);
+ 	
+	if(!page_table_entry)
+		return NULL;
+
+ 	if(pte_store)
+		*pte_store = page_table_entry;
+
+ 	return (struct PageInfo *)pa2page(PTE_ADDR(*page_table_entry));
+	
+	//return NULL;
 }
 
 //
@@ -497,6 +549,15 @@ void
 page_remove(pde_t *pgdir, void *va)
 {
 	// Fill this function in
+	pte_t *page_table_entry;
+ 	struct PageInfo *page_pointer = page_lookup(pgdir, va, &page_table_entry);
+ 	
+	if(!page_pointer || !(*page_table_entry & PTE_P))
+		return;
+
+ 	page_decref(page_pointer);
+ 	*page_table_entry = 0;
+ 	tlb_invalidate(pgdir, va);
 }
 
 //
