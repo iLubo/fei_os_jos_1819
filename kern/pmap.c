@@ -95,7 +95,7 @@ boot_alloc(uint32_t n)
 	// to any kernel code or global variables.
 	if (!nextfree) {
 		extern char end[];
-		nextfree = ROUNDUP((char *) end, PGSIZE);
+		nextfree = ROUNDUP((char *) end + 1, PGSIZE);
 	}
 
 	// Allocate a chunk large enough to hold 'n' bytes, then update
@@ -221,7 +221,7 @@ mem_init(void)
 	// LAB 3: Your code here.
 
 	//int size = ROUNDUP(sizeof(struct))
-	boot_map_region(kern_pgdir, UENVS, NENV * sizeof(struct Env), PADDR(envs), (PTE_U | PTE_P));
+	boot_map_region(kern_pgdir, UENVS, ROUNDUP(NENV * sizeof(struct Env), PGSIZE), PADDR(envs), (PTE_U | PTE_P));
 
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
@@ -246,7 +246,7 @@ mem_init(void)
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
 
-	boot_map_region(kern_pgdir, KERNBASE, ROUNDUP(-KERNBASE - 1, PGSIZE), 0, (PTE_W | PTE_P));
+	boot_map_region(kern_pgdir, KERNBASE, -KERNBASE, 0, (PTE_W | PTE_P));
 
 	// Check that the initial page directory has been set up correctly.
 	check_kern_pgdir();
@@ -615,6 +615,12 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
+
+	uintptr_t start = (uintptr_t)ROUNDDOWN(va, PGSIZE);
+	uintptr_t end = (uintptr_t)ROUNDUP(va + len, PGSIZE);
+
+	perm = perm | PTE_P;
+
 
 	return 0;
 }
