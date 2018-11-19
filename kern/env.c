@@ -121,6 +121,12 @@ env_init(void)
 	// 2. e.env_link <-- env_free_list
 	// 3. evn_free_list <-- e
 
+	env_free_list = NULL;
+
+	for(int i = NENV; i >= 0; --i) {
+		envs[i].env_link = env_free_list;
+		env_free_list = &envs[i];
+	}
 
 	// Per-CPU part of the initialization
 	env_init_percpu();
@@ -276,13 +282,15 @@ region_alloc(struct Env *e, void *va, size_t len)
 	// (But only if you need it for load_icode.)
 	//
 
-	end_va = ROUNDUIP(va + len, PGSIZE);
-	va = ROUNDDOWN(va, PGSIZE);
+	uintptr_t adr = ROUNDDOWN((uintptr_t)va, PGSIZE);
+	uintptr_t end_va = ROUNDUP((uintptr_t)va + len, PGSIZE);
 
-	while(va < end_va) {
-		pp = alloc_page();
-		page_insert(e->env_pgdir, pp, va, PTE_W | PTE_U);
-		//va += ;
+	while(adr < end_va) {
+		struct PageInfo *pp = page_alloc(0);
+		if(pp == NULL)
+			panic("region_alloc: Out of memory\n");
+		page_insert(e->env_pgdir, pp, (void *) adr, PTE_W | PTE_U);
+		adr += PGSIZE;
 	}
 
 	// Hint: It is easier to use region_alloc if the caller can pass
@@ -354,12 +362,13 @@ load_icode(struct Env *e, uint8_t *binary)
 
 	ph = (struct Proghdr *) (binary + elf->e_phoff);
 	eph = ph + elf->e_phnum;
-	for(; ph < eph; ph++){
-		region_alloc(e,(void *)( ph->p_va, ph->p_memsz));
 
-		memcpy((uint8_t *)(ph->p_va, binary + ph->p_offset, ph->p_filesz));
+	for(; ph < eph; ph++){
+		region_alloc(e,(void *)ph->p_va, ph->p_memsz);
+
+		memcpy((uint8_t *)ph->p_va, binary + ph->p_offset, ph->p_filesz);
 		if(ph->p_filesz < ph->p_memsz)
-			memset((uint8_t *)(ph->p_va + ph->p_filesz, "\0", ph->p_memsz - ph->p_filesz));
+			memset((uint8_t *)(ph->p_va + ph->p_filesz), 0, ph->p_memsz - ph->p_filesz);
 	}
 
 	e->env_tf.tf_eip = elf->e_entry;
@@ -398,7 +407,7 @@ env_create(uint8_t *binary, enum EnvType type)
 		panic("env_create: env_alloc() failed\n");
 
 	load_icode(e, binary);
-	e->env_type = ;
+	e->env_type = type;
 
 }
 
@@ -523,8 +532,10 @@ env_run(struct Env *e)
 	curenv = e;
 	e->env_status = ENV_RUNNING;
 	e->env_runs++;
-	lcr3(PADDR(e->env_pgdir);)
+	lcr3(PADDR(e->env_pgdir));
 
-	panic("env_run not yet implemented");
+	//panic("env_run not yet implemented");
+	
+	env_pop_tf(&e->env_tf);
 }
 
