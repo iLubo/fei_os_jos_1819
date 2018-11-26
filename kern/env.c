@@ -375,6 +375,8 @@ load_icode(struct Env *e, uint8_t *binary)
 	ph = (struct Proghdr *) (binary + elf->e_phoff);
 	eph = ph + elf->e_phnum;
 
+	lcr3(PADDR(e->env_pgdir));
+
 	for(; ph < eph; ph++){
 		region_alloc(e,(void *)ph->p_va, ph->p_memsz);
 
@@ -398,7 +400,7 @@ load_icode(struct Env *e, uint8_t *binary)
 	if(page_insert(e->env_pgdir, pp, (void *)(USTACKTOP - PGSIZE), PTE_U | PTE_W))
 		panic("load_icode: Out of memory\n");
 	
-	
+	lcr3(PADDR(kern_pgdir));
 }
 
 //
@@ -415,7 +417,7 @@ env_create(uint8_t *binary, enum EnvType type)
 	
 	struct Env *e;
 
-	if(env_alloc(&e, 0))
+	if(env_alloc(&e, 0) < 0)
 		panic("env_create: env_alloc() failed\n");
 
 	load_icode(e, binary);
