@@ -300,7 +300,17 @@ mem_init_mp(void)
 	//     Permissions: kernel RW, user NONE
 	//
 	// LAB 4: Your code here:
+	
+	// odcitame velkost ktoru mapujeme
+	uintptr_t kstack_start = KSTACKTOP - KSTKSIZE;
 
+	for(uint32_t i = 0; i < NCPU; ++i) {
+		boot_map_region(kern_pgdir, kstack_start, KSTKSIZE, PADDR(percpu_kstacks[i]), PTE_W);
+		//-i*(KSTKSIZE+KSTKGAP)//namapujeme
+		
+		//nastavime kstack_start na novu adresu
+		kstack_start -= (KSTKSIZE + KSTKGAP);
+	}
 }
 
 // --------------------------------------------------------------
@@ -339,9 +349,8 @@ page_init(void)
 	// Change the code to reflect this.
 	// NB: DO NOT actually touch the physical memory corresponding to
 	// free pages!
-	
-	//size_t i;
 
+	/*
 	page_free_list = NULL;
 
 	for (size_t i = 0; i < npages; i++) {
@@ -359,6 +368,29 @@ page_init(void)
 			page_free_list = &pages[i];
 		}
 	}
+	*/
+
+	size_t mpentry_index = PGNUM(MPENTRY_PADDR);
+
+	for (size_t i = 1; i < npages_basemem; i++) {
+		
+		if (i == mpentry_index) {
+	            pages[i].pp_ref = 1;
+        	    pages[i].pp_link = NULL;
+		    continue;
+		}
+
+		pages[i].pp_ref = 0;
+		pages[i].pp_link = page_free_list;
+		page_free_list = &pages[i];
+	}
+
+	for (size_t i = PGNUM(PADDR(boot_alloc(0))); i < npages; i++) {
+		pages[i].pp_ref = 0;
+		pages[i].pp_link = page_free_list;
+		page_free_list = &pages[i];
+	}
+
 }
 
 //
@@ -657,7 +689,26 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+	
+	//panic("mmio_map_region not implemented");
+	
+	size = ROUNDUP(pa+size, PGSIZE);
+	pa = ROUNDDOWN(pa, PGSIZE);
+
+	// odcitanim size-pa ziskame velkost ktoru potrebujeme rezervovat
+	size -= pa;
+	
+	if (base+size >= MMIOLIM)
+		panic("mmio_map_region:not enough memory");
+
+	boot_map_region(kern_pgdir, base, size, pa, PTE_PCD|PTE_PWT|PTE_W);
+
+	// do base ulozime miesto v pamati kde konci blok ktory sme rezervovali
+	base += size;
+	
+	// vratime zaciatok nasho rezervovaneho bloku
+	return (void*)(base - size);
+
 }
 
 static uintptr_t user_mem_check_addr;
