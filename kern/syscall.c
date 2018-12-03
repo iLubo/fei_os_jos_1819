@@ -91,8 +91,8 @@ sys_exofork(void)
 
 	int i = env_alloc(&e, curenv->env_id);
 	if (i < 0)
-		//return -E_NO_FREE_ENV;
-		return i;
+		return -E_NO_FREE_ENV;
+		//return i;
 			
 	e->env_status = ENV_NOT_RUNNABLE;
 	e->env_tf = curenv->env_tf;
@@ -144,7 +144,15 @@ static int
 sys_env_set_pgfault_upcall(envid_t envid, void *func)
 {
 	// LAB 4: Your code here.
-	panic("sys_env_set_pgfault_upcall not implemented");
+	//panic("sys_env_set_pgfault_upcall not implemented");
+	
+	struct Env *e;
+
+	if (envid2env(envid, &e, 1) < 0)
+		return -E_BAD_ENV;
+
+	e->env_pgfault_upcall = func;
+	return 0;
 }
 
 // Allocate a page of memory and map it at 'va' with permission
@@ -185,7 +193,8 @@ sys_page_alloc(envid_t envid, void *va, int perm)
  	if (va >= (void*)UTOP)
 		return -E_INVAL;
 
- 	if((perm & PTE_U & PTE_P) && ((perm | PTE_SYSCALL) != PTE_SYSCALL))
+	int flag = PTE_U | PTE_P;
+ 	if(((perm & flag) != flag) && ((perm | PTE_SYSCALL) != PTE_SYSCALL))
  		return -E_INVAL;
 
  	struct PageInfo *pg = page_alloc(1);
@@ -193,6 +202,7 @@ sys_page_alloc(envid_t envid, void *va, int perm)
  	if (!pg)
  		return -E_NO_MEM;
 
+	pg->pp_ref++;
  	ret = page_insert(e->env_pgdir, pg, va, perm);
 
  	if (ret) {
@@ -247,7 +257,8 @@ sys_page_map(envid_t srcenvid, void *srcva,
 	if (p == NULL)
 		return -E_INVAL;
 	
-	if ((perm & PTE_U & PTE_P) && ((perm | PTE_SYSCALL) != PTE_SYSCALL))
+	int flag = PTE_U | PTE_P;
+	if (((perm & flag) != flag) && ((perm | PTE_SYSCALL) != PTE_SYSCALL))
 		return -E_INVAL;
 
 	if ((!(*pp & PTE_W)) && (perm & PTE_W))
@@ -372,6 +383,18 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 		case SYS_yield:
 			sys_yield();
 			return 0;
+		case SYS_exofork:
+			return sys_exofork();
+		case SYS_page_alloc:
+			return sys_page_alloc(a1, (void*)a2, a3);
+		case SYS_page_map:
+			return sys_page_map(a1, (void*)a2, a3, (void*)a4, a5);
+		case SYS_page_unmap:
+			return sys_page_unmap(a1, (void*)a2);
+		case SYS_env_set_status:
+			return sys_env_set_status(a1, a2);
+		case SYS_env_set_pgfault_upcall:
+			return sys_env_set_pgfault_upcall(a1, (void*)a2);
 		default:
 			return -E_INVAL;
 

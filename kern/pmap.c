@@ -304,7 +304,7 @@ mem_init_mp(void)
 	// odcitame velkost ktoru mapujeme
 	uintptr_t kstack_start = KSTACKTOP - KSTKSIZE;
 
-	for(uint32_t i = 0; i < NCPU; ++i) {
+	for(int i = 0; i < NCPU; ++i) {
 		boot_map_region(kern_pgdir, kstack_start, KSTKSIZE, PADDR(percpu_kstacks[i]), PTE_W);
 		//-i*(KSTKSIZE+KSTKGAP)//namapujeme
 		
@@ -385,12 +385,12 @@ page_init(void)
 		page_free_list = &pages[i];
 	}
 
-	for (size_t i = PGNUM(PADDR(boot_alloc(0))); i < npages; i++) {
+	int med = (int)ROUNDUP(((char*)envs) + (sizeof(struct Env) * NENV) - 0xf0000000, PGSIZE)/PGSIZE;
+	for (size_t i = /*PGNUM(PADDR(boot_alloc(0)))*/ med; i < npages; i++) {
 		pages[i].pp_ref = 0;
 		pages[i].pp_link = page_free_list;
 		page_free_list = &pages[i];
 	}
-
 }
 
 //

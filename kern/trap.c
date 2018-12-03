@@ -223,11 +223,11 @@ trap_dispatch(struct Trapframe *tf)
 	// interrupt using lapic_eoi() before calling the scheduler!
 	// LAB 4: Your code here.
 	
-	if (tf->tf_trapno == IRQ_OFFSET + IRQ_TIMER) {
+	/*if (tf->tf_trapno == IRQ_OFFSET + IRQ_TIMER) {
 		lapic_eoi();
 		sched_yield();
 		return;
-	}
+	}*/
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
@@ -351,11 +351,11 @@ page_fault_handler(struct Trapframe *tf)
 
 	// LAB 4: Your code here.
 
-	if (curenv->env_pgfault_upcall) {
+	if(curenv->env_pgfault_upcall) {
 		size_t size = sizeof(struct UTrapframe);
-		struct UTrapframe* utf = (struct UTrapframe*) (USTACKTOP - size);
+		struct UTrapframe* utf = (struct UTrapframe*) (UXSTACKTOP - size);
 		
-		if (tf->tf_esp > USTACKTOP) {
+		if (tf->tf_esp > UXSTACKTOP && tf->tf_esp >= UXSTACKTOP-PGSIZE) {
 			size += 4;
 			utf = (struct UTrapframe*) (tf->tf_esp - size);
 		}
