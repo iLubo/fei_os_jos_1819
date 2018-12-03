@@ -91,7 +91,7 @@ trap_init(void)
 	extern void TH_ALIGN(); 	SETGATE(idt[T_ALIGN], 0, GD_KT, TH_ALIGN, 0); 
 	extern void TH_MCHK(); 		SETGATE(idt[T_MCHK], 0, GD_KT, TH_MCHK, 0); 
 	extern void TH_SIMDERR(); 	SETGATE(idt[T_SIMDERR], 0, GD_KT, TH_SIMDERR, 0); 
-	extern void TH_SYSCALL(); 	SETGATE(idt[T_SYSCALL], 1, GD_KT, TH_SYSCALL, 3); 
+	extern void TH_SYSCALL(); 	SETGATE(idt[T_SYSCALL], 0, GD_KT, TH_SYSCALL, 3); 
 
 	extern void TH_IRQ_TIMER();	SETGATE(idt[IRQ_OFFSET+IRQ_TIMER], 0, GD_KT, TH_IRQ_TIMER, 0); 
 	extern void TH_IRQ_KBD();	SETGATE(idt[IRQ_OFFSET+IRQ_KBD], 0, GD_KT, TH_IRQ_KBD, 0); 
@@ -109,7 +109,7 @@ trap_init(void)
 	extern void TH_IRQ_13();	SETGATE(idt[IRQ_OFFSET+13], 0, GD_KT, TH_IRQ_13, 0); 
 	extern void TH_IRQ_IDE();	SETGATE(idt[IRQ_OFFSET+IRQ_IDE], 0, GD_KT, TH_IRQ_IDE, 0); 
 	extern void TH_IRQ_15();	SETGATE(idt[IRQ_OFFSET+15], 0, GD_KT, TH_IRQ_15, 0);
-	//extern void TH_IRQ_ERROR();	SETGATE(idt[IRQ_OFFSET+IRQ_ERROR], 0, GD_KT, TH_IRQ_ERROR, 0);	// cislo 19
+	extern void TH_IRQ_ERROR();	SETGATE(idt[IRQ_OFFSET+IRQ_ERROR], 0, GD_KT, TH_IRQ_ERROR, 0);	// cislo 19
 
 	// Per-CPU setup 
 	trap_init_percpu();
@@ -373,7 +373,7 @@ page_fault_handler(struct Trapframe *tf)
 		size_t size = sizeof(struct UTrapframe);
 		struct UTrapframe* utf = (struct UTrapframe*) (UXSTACKTOP - size);
 		
-		if (tf->tf_esp > UXSTACKTOP && tf->tf_esp >= UXSTACKTOP-PGSIZE) {
+		if (tf->tf_esp > USTACKTOP/* && tf->tf_esp >= UXSTACKTOP-PGSIZE*/) {
 			size += 4;
 			utf = (struct UTrapframe*) (tf->tf_esp - size);
 		}
