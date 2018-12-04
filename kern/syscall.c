@@ -342,9 +342,8 @@ static int
 sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_try_send not implemented");
+	//panic("sys_ipc_try_send not implemented");
 	
-	/*
 	struct Env *e;
 	int ret = envid2env(envid, &e, 0);
 	
@@ -368,8 +367,6 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 		
 		if (perm & ~PTE_SYSCALL)
 			return -E_INVAL;
-		
-		pp = page_lookup(curenv->env_pgdir, srcva, &pte);
 
 		if(!pp)
 			return -E_INVAL;
@@ -391,7 +388,7 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 	e->env_ipc_value = value; 
 	e->env_status = ENV_RUNNABLE;
 	e->env_tf.tf_regs.reg_eax = 0;
-	*/
+	
 	return 0;
 }
 
@@ -410,9 +407,8 @@ static int
 sys_ipc_recv(void *dstva)
 {
 	// LAB 4: Your code here.
-	panic("sys_ipc_recv not implemented");
-	
-	/*
+	//panic("sys_ipc_recv not implemented");
+		
 	if (dstva < (void*) UTOP && ((size_t)dstva % PGSIZE != 0))
 		return -E_INVAL;
 
@@ -420,7 +416,7 @@ sys_ipc_recv(void *dstva)
 	curenv->env_status = ENV_NOT_RUNNABLE;
 	curenv->env_ipc_dstva = dstva;
 	sys_yield();
-*/	
+
 	return 0;
 }
 
@@ -457,6 +453,10 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 			return sys_env_set_status(a1, a2);
 		case SYS_env_set_pgfault_upcall:
 			return sys_env_set_pgfault_upcall(a1, (void*)a2);
+		case SYS_ipc_recv:
+			return sys_ipc_recv((void*)a1);
+		case SYS_ipc_try_send:
+			return sys_ipc_try_send(a1, a2, (void*)a3, a4);
 		default:
 			return -E_INVAL;
 

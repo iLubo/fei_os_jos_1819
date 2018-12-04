@@ -23,8 +23,31 @@ int32_t
 ipc_recv(envid_t *from_env_store, void *pg, int *perm_store)
 {
 	// LAB 4: Your code here.
-	panic("ipc_recv not implemented");
-	return 0;
+	//panic("ipc_recv not implemented");
+	
+	if (from_env_store)
+		*from_env_store = 0;		//nastavenie smerniku ak existuje
+	
+	if (perm_store)
+		*perm_store = 0;				//nastavenie smerniku ak existuje
+	
+	if (!pg)
+		pg = (void*) -1;						//ak je pg null tak do pg posleme -1 (funkcia sis_ipc_recv to pochopi ako no page)
+	
+	int ret = sys_ipc_recv(pg);						//retunu priradime navratovu hodnotu z funckie sys_ipc_recv
+	
+	if (ret)
+		return ret;							//ak funckia zbehla spravne returne ret
+	
+	if (from_env_store)								//ak from_env_store nieje null tak do smernika na tuto premennu sa ulozi parameter od koho je posielana stranka
+		*from_env_store = thisenv->env_ipc_from;
+	
+	if (perm_store)									//ak perm_store nieje nulla tak sa do smernika na tuto premennu ulozi ako permision ma posielana stranka
+		*perm_store = thisenv->env_ipc_perm;
+
+	return thisenv->env_ipc_value;					// vracia hodnotu poslanu odosielajucim prostredim
+
+	//return 0;
 }
 
 // Send 'val' (and 'pg' with 'perm', if 'pg' is nonnull) to 'toenv'.
@@ -39,7 +62,21 @@ void
 ipc_send(envid_t to_env, uint32_t val, void *pg, int perm)
 {
 	// LAB 4: Your code here.
-	panic("ipc_send not implemented");
+	//panic("ipc_send not implemented");
+	
+	if (!pg)
+		pg = (void*)-1;
+	
+	int ret;
+	while ((ret = sys_ipc_try_send(to_env, val, pg, perm))) {
+		if (ret == 0)
+			break;
+
+		if (ret != -E_IPC_NOT_RECV)
+			panic("not E_IPC_NOT_RECV, %e", ret);
+
+		sys_yield();
+	}
 }
 
 // Find the first environment of the given type.  We'll use this to
