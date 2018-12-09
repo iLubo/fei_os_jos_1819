@@ -355,7 +355,7 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 	
 	e->env_ipc_perm = 0;
 
-	if ((uintptr_t) srcva) {
+	if ((uintptr_t)srcva < UTOP) {
 		pte_t *pte;
 		struct PageInfo *pp = page_lookup(curenv->env_pgdir, srcva, &pte);
 
